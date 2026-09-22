@@ -1,0 +1,67 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+dist-ssr/
+.output/
+.vinxi/
+.tanstack/**
+.nitro/
+
+# Logs
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Environment & secrets
+*.local
+.env
+.env.*
+.dev.vars
+
+# Wrangler / Cloudflare
+.wrangler/
+
+# Editor directories and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# AI tool configs (not needed in repo)
+.claude/
+.lovable/
+AGENTS.md
+mem:/
+
+# Markdown docs (dev notes / roadmaps, not source code)
+roadmap.md
+README.md
+
+# Research artifacts (re-downloadable / regeneratable)
+research/data/
+research/output/
+research/__pycache__/
+__pycache__/
+
+# Lock files (using bun.lock which is already committed-friendly,
+# but ignore other package manager locks if they appear)
+package-lock.json
+yarn.lock
+pnpm-lock.yaml
+
+# Prettier config (optional tooling, not essential to repo)
+.prettierrc
+.prettierignore

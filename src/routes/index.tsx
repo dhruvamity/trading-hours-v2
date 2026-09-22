@@ -157,26 +157,26 @@ function Index() {
       <div className="mx-auto w-full max-w-6xl px-4 py-5 sm:px-6 sm:py-8 lg:px-8">
         <header className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
-            <h1 className="text-2xl font-semibold sm:text-3xl">Trading hours</h1>
+            <h1 className="text-3xl font-bold sm:text-4xl">Trading hours</h1>
             <a
               href="/report.html"
-              className="mt-2 inline-flex items-center gap-1.5 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+              className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
             >
-              <FileBarChart2 className="size-3.5" aria-hidden="true" />
+              <FileBarChart2 className="size-4" aria-hidden="true" />
               Research report
             </a>
           </div>
           <div className="flex items-center gap-3 sm:text-right">
-            <MoonStar className="size-4 text-muted-foreground" aria-hidden="true" />
+            <MoonStar className="size-5 text-muted-foreground" aria-hidden="true" />
             <div>
               <div
-                className="font-mono text-2xl font-medium tabular-nums sm:text-3xl"
+                className="text-3xl font-bold tabular-nums sm:text-4xl"
                 aria-live="polite"
               >
                 {now ? ist.time : "--:--:--"}
-                <span className="ml-2 text-xs text-muted-foreground">IST</span>
+                <span className="ml-2 text-sm font-medium text-muted-foreground">IST</span>
               </div>
-              <div className="mt-1 text-xs text-muted-foreground">
+              <div className="mt-1 text-sm text-muted-foreground">
                 {now ? `${ist.day} · ${ist.date}` : "Synchronising time"}
               </div>
             </div>
@@ -190,7 +190,7 @@ function Index() {
                 key={item.id}
                 type="button"
                 onClick={() => setInstrument(item.id)}
-                className={`min-w-28 px-4 py-2 font-mono text-xs font-semibold transition-colors ${instrument === item.id ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+                className={`min-w-28 px-4 py-2.5 text-sm font-bold transition-colors ${instrument === item.id ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
                 aria-pressed={instrument === item.id}
               >
                 {item.id}
@@ -208,7 +208,7 @@ function Index() {
                   key={item ?? "auto"}
                   type="button"
                   onClick={() => setRegimeOverride(item)}
-                  className={`min-h-9 px-2.5 font-mono text-[10px] uppercase transition-colors ${regimeOverride === item ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`min-h-10 px-3 text-sm font-semibold uppercase transition-colors ${regimeOverride === item ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                   aria-pressed={regimeOverride === item}
                 >
                   {item === null
@@ -225,7 +225,7 @@ function Index() {
                   key={item}
                   type="button"
                   onClick={() => setSelectedDay(item)}
-                  className={`min-h-9 px-2 font-mono text-[10px] uppercase transition-colors sm:px-3 ${day === item ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                  className={`min-h-10 px-2.5 text-sm font-semibold uppercase transition-colors sm:px-3.5 ${day === item ? "bg-secondary text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                   aria-label={item}
                   aria-pressed={day === item}
                 >
@@ -240,51 +240,50 @@ function Index() {
           className="mt-4 grid gap-px border border-border bg-border md:grid-cols-3"
           aria-label="Live guidance"
         >
-          <div className="bg-panel p-4">
+          <div className="bg-panel p-5">
             <p className="terminal-label">Now · {instrument}</p>
-            <div className="mt-2 flex items-center gap-2">
-              <span className={`size-2 rounded-full ${bg(live.current?.status ?? "CLOSED")}`} />
-              <p className={`text-lg font-semibold ${fg(live.current?.status ?? "CLOSED")}`}>
+            <div className="mt-2.5 flex items-center gap-2.5">
+              <span className={`size-3 rounded-full ${bg(live.current?.status ?? "CLOSED")}`} />
+              <p className={`text-2xl font-bold ${fg(live.current?.status ?? "CLOSED")}`}>
                 {now ? (live.current?.status ?? "CLOSED") : "—"}
               </p>
             </div>
-            <p className="mt-2 font-mono text-xs text-muted-foreground">
+            <p className="mt-3 text-base tabular-nums text-muted-foreground">
               {now && live.current
                 ? `until ${clock(live.current.to % 1440)} · ${formatCountdown(live.endsIn)}`
                 : "—"}
             </p>
-            <p className="mt-1 text-xs text-muted-foreground">{now ? live.current?.note : ""}</p>
           </div>
-          <div className="bg-panel p-4">
+          <div className="bg-panel p-5">
             <p className="terminal-label">Next change</p>
-            <div className="mt-2 flex items-baseline justify-between gap-3">
+            <div className="mt-2.5 flex items-baseline justify-between gap-3">
               <p
-                className={`text-lg font-semibold ${live.next ? fg(live.next.window.status) : ""}`}
+                className={`text-2xl font-bold ${live.next ? fg(live.next.window.status) : ""}`}
               >
                 {now && live.next ? live.next.window.status : "—"}
               </p>
-              <p className="font-mono text-xs tabular-nums text-muted-foreground">
+              <p className="text-base tabular-nums text-muted-foreground">
                 {now && live.next ? formatCountdown(live.next.startsIn) : ""}
               </p>
             </div>
-            <p className="mt-2 font-mono text-xs text-muted-foreground">
+            <p className="mt-3 text-base tabular-nums text-muted-foreground">
               {now && live.next
                 ? `${whenLabel(live.next.window)} — ${clock(live.next.window.to % 1440)}`
                 : "—"}
             </p>
           </div>
-          <div className="bg-panel p-4">
+          <div className="bg-panel p-5">
             <p className="terminal-label">Next prime / swing window</p>
-            <div className="mt-2 flex items-baseline justify-between gap-3">
-              <p className="font-mono text-lg font-medium tabular-nums">
+            <div className="mt-2.5 flex items-baseline justify-between gap-3">
+              <p className="text-2xl font-bold tabular-nums">
                 {now && live.nextPrime ? whenLabel(live.nextPrime.window) : "—"}
               </p>
-              <p className="font-mono text-xs tabular-nums text-muted-foreground">
+              <p className="text-base tabular-nums text-muted-foreground">
                 {now && live.nextPrime ? `in ${formatCountdown(live.nextPrime.startsIn)}` : ""}
               </p>
             </div>
             <p
-              className={`mt-2 text-xs ${live.nextPrime ? fg(live.nextPrime.window.status) : "text-muted-foreground"}`}
+              className={`mt-3 text-base font-semibold ${live.nextPrime ? fg(live.nextPrime.window.status) : "text-muted-foreground"}`}
             >
               {now && live.nextPrime
                 ? `${live.nextPrime.window.status} · until ${clock(live.nextPrime.window.to % 1440)}`
@@ -302,7 +301,7 @@ function Index() {
               <p className="terminal-label">
                 24-hour rail · {regime === "summer" ? "US summer clock" : "US winter clock"}
               </p>
-              <h2 className="mt-1 text-base font-medium">
+              <h2 className="mt-1 text-xl font-bold">
                 {instrumentLabel} / {day}
               </h2>
             </div>
@@ -310,7 +309,7 @@ function Index() {
               <button
                 type="button"
                 onClick={() => setSelectedDay(null)}
-                className="font-mono text-[10px] uppercase text-muted-foreground hover:text-foreground"
+                className="text-sm font-semibold uppercase text-muted-foreground hover:text-foreground"
               >
                 Return to today
               </button>
@@ -328,9 +327,9 @@ function Index() {
                 style={{ left: `${hoverPercent}%` }}
               >
                 <span
-                  className={`absolute flex items-center gap-1.5 whitespace-nowrap border border-border bg-panel px-2 py-1 font-mono text-[10px] font-medium uppercase ${hoverShift}`}
+                  className={`absolute flex items-center gap-2 whitespace-nowrap border border-border bg-panel px-2.5 py-1.5 text-xs font-bold uppercase ${hoverShift}`}
                 >
-                  <span className={`size-1.5 rounded-full ${bg(hoverWindow.status)}`} />
+                  <span className={`size-2 rounded-full ${bg(hoverWindow.status)}`} />
                   <span className={fg(hoverWindow.status)}>{hoverWindow.status}</span>
                   {hoverScore !== null && (
                     <span className="text-muted-foreground">· {hoverScore.toFixed(2)}×</span>
@@ -383,8 +382,8 @@ function Index() {
               />
             )}
           </div>
-          <div className="relative mt-2 h-4">
-            <div className="flex justify-between font-mono text-[10px] text-muted-foreground">
+          <div className="relative mt-2 h-5">
+            <div className="flex justify-between text-xs font-medium text-muted-foreground">
               <span>00:00</span>
               <span>06:00</span>
               <span>12:00</span>
@@ -393,7 +392,7 @@ function Index() {
             </div>
             {hoverMinutes !== null && (
               <span
-                className={`pointer-events-none absolute top-0 whitespace-nowrap bg-foreground px-1 py-px font-mono text-[10px] font-medium tabular-nums text-background ${hoverShift}`}
+                className={`pointer-events-none absolute top-0 whitespace-nowrap bg-foreground px-1.5 py-0.5 text-xs font-bold tabular-nums text-background ${hoverShift}`}
                 style={{ left: `${hoverPercent}%` }}
               >
                 {clock(hoverMinutes)}
@@ -401,87 +400,61 @@ function Index() {
             )}
           </div>
 
-          <div className="mt-5 flex flex-wrap items-center gap-x-4 gap-y-2">
+          <div className="mt-5 flex flex-wrap items-center gap-x-5 gap-y-2">
             {(Object.keys(statusClass) as Status[]).map((status) => (
               <div key={status} className="flex items-center gap-2">
-                <span className={`size-2 rounded-full ${bg(status)}`} />
-                <span className="font-mono text-[10px] text-muted-foreground">{status}</span>
+                <span className={`size-2.5 rounded-full ${bg(status)}`} />
+                <span className="text-xs font-semibold text-muted-foreground">{status}</span>
               </div>
             ))}
-            <span className="font-mono text-[10px] text-muted-foreground">
-              · bars = half-hour score, dashed line = typical (1.0×)
-            </span>
           </div>
         </section>
 
         <section className="mt-4 overflow-hidden border border-border bg-panel">
-          <div className="grid grid-cols-[1fr_1fr_auto] gap-3 border-b border-border px-4 py-3 font-mono text-[10px] uppercase tracking-[0.14em] text-muted-foreground sm:grid-cols-[150px_1fr_70px_70px_70px_70px]">
+          <div className="grid grid-cols-[auto_1fr_auto] gap-3 border-b border-border px-4 py-3 text-xs font-bold uppercase tracking-wide text-muted-foreground sm:grid-cols-[170px_1fr_80px_90px_70px_80px]">
             <span>Window</span>
             <span>Status</span>
-            <span className="hidden text-right sm:block" title="Half-hour score, 1 = typical">
-              Score
-            </span>
-            <span
-              className="hidden text-right sm:block"
-              title="Average net price move over the next hour, in % of price"
-            >
-              1h move
-            </span>
-            <span
-              className="hidden text-right sm:block"
-              title="Share of weeks this window beat the day's median"
-            >
-              Hit
-            </span>
+            <span className="hidden text-right sm:block">Score</span>
+            <span className="hidden text-right sm:block">1h move</span>
+            <span className="hidden text-right sm:block">Hit</span>
             <span className="text-right">Length</span>
           </div>
           {sessions.map((slot, index) => (
             <div
               key={`${slot.start}-${slot.end}`}
-              className={`grid min-h-14 grid-cols-[1fr_1fr_auto] items-center gap-3 border-b border-border/70 px-4 py-3 last:border-b-0 sm:grid-cols-[150px_1fr_70px_70px_70px_70px] ${index === activeIndex ? "bg-active-row" : ""}`}
+              className={`grid min-h-16 grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-border/70 px-4 py-3.5 last:border-b-0 sm:grid-cols-[170px_1fr_80px_90px_70px_80px] ${index === activeIndex ? "bg-active-row" : ""}`}
             >
-              <span className="font-mono text-xs tabular-nums sm:text-sm">
+              <span className="whitespace-nowrap text-sm tabular-nums sm:text-base">
                 {slot.start} — {slot.end}
               </span>
-              <span className="min-w-0">
-                <span className="flex items-center gap-2 text-xs font-medium sm:text-sm">
-                  <span className={`size-2 shrink-0 rounded-full ${bg(slot.status)}`} />
-                  <span className={index === activeIndex ? fg(slot.status) : ""}>
-                    {slot.status}
-                  </span>
-                  {index === activeIndex && (
-                    <span className="hidden border border-current px-1.5 py-0.5 font-mono text-[9px] uppercase sm:inline">
-                      Live
-                    </span>
-                  )}
+              <span className="flex items-center gap-2.5 whitespace-nowrap text-sm font-bold sm:text-base">
+                <span className={`size-2.5 shrink-0 rounded-full ${bg(slot.status)}`} />
+                <span className={index === activeIndex ? fg(slot.status) : ""}>
+                  {slot.status}
                 </span>
-                {slot.note && (
-                  <span className="mt-0.5 block text-[11px] text-muted-foreground">
-                    {slot.note}
+                {index === activeIndex && (
+                  <span className="hidden border border-current px-1.5 py-0.5 text-xs font-bold uppercase sm:inline">
+                    Live
                   </span>
                 )}
               </span>
-              <span className="hidden text-right font-mono text-xs tabular-nums sm:block">
+              <span className="hidden text-right text-sm tabular-nums sm:block sm:text-base">
                 {slot.score === null ? "—" : `${fmt(slot.score)}×`}
               </span>
-              <span className="hidden text-right font-mono text-xs tabular-nums text-muted-foreground sm:block">
+              <span className="hidden text-right text-sm tabular-nums text-muted-foreground sm:block sm:text-base">
                 {slot.movePct === null ? "—" : `${fmt(slot.movePct)}%`}
               </span>
-              <span className="hidden text-right font-mono text-xs tabular-nums text-muted-foreground sm:block">
+              <span className="hidden text-right text-sm tabular-nums text-muted-foreground sm:block sm:text-base">
                 {pct(slot.consistency)}
               </span>
-              <span className="text-right font-mono text-xs text-muted-foreground">
+              <span className="text-right text-sm text-muted-foreground sm:text-base">
                 {durationLabel(slot.start, slot.end)}
               </span>
             </div>
           ))}
         </section>
-        <footer className="mt-5 flex flex-col gap-1 border-t border-border pt-4 text-[11px] text-muted-foreground sm:flex-row sm:justify-between">
-          <span>Statistical session map · not trading advice</span>
-          <span>
-            Research data through {RESEARCH_META.dataThrough} · recency half-life{" "}
-            {RESEARCH_META.halfLifeWeeks}w · generated {RESEARCH_META.generated}
-          </span>
+        <footer className="mt-5 border-t border-border pt-4 text-sm text-muted-foreground">
+          Research data through {RESEARCH_META.dataThrough} · generated {RESEARCH_META.generated}
         </footer>
       </div>
     </main>

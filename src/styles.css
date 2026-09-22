@@ -67,8 +67,8 @@
   --color-status-closed: var(--status-closed);
   --color-live-marker: var(--live-marker);
   --color-active-row: var(--active-row);
-  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+  --font-sans: Arial, Helvetica, "Segoe UI", sans-serif;
+  --font-mono: Arial, Helvetica, "Segoe UI", sans-serif;
 }
 
 :root {
@@ -159,6 +159,7 @@
     background-color: var(--color-background);
     color: var(--color-foreground);
     font-family: var(--font-sans);
+    font-size: 1rem;
     letter-spacing: 0;
     color-scheme: dark;
   }
@@ -167,10 +168,11 @@
 }
 
 @utility terminal-label {
-  font-family: var(--font-mono);
-  font-size: 0.625rem;
-  line-height: 1rem;
+  font-family: var(--font-sans);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  font-weight: 600;
   text-transform: uppercase;
-  letter-spacing: 0.14em;
+  letter-spacing: 0.06em;
   color: var(--color-muted-foreground);
 }

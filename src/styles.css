@@ -176,3 +176,12 @@
   letter-spacing: 0.06em;
   color: var(--color-muted-foreground);
 }
+
+/* Scheduled-news stand-aside window on the 24h rail */
+@utility news-block {
+  background: repeating-linear-gradient(
+    135deg,
+    color-mix(in oklch, var(--color-status-stop) 70%, transparent) 0 3px,
+    color-mix(in oklch, var(--color-background) 60%, transparent) 3px 7px
+  );
+}

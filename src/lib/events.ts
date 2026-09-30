@@ -1,34 +1,21 @@
 import type { Instrument } from "./timetable";
 import {
-  EVENT_CALENDAR,
   EVENT_PROFILES,
   EVENTS_META,
   PRE_NEWS,
-  type CalendarEvent,
   type EventProfile,
   type PreNews,
   type ProfileAsset,
 } from "./events.generated";
+import { buildBlocks, type Block, type LiveEvent } from "./news-feed";
 
-export { EVENT_CALENDAR, EVENT_PROFILES, EVENTS_META, PRE_NEWS };
-export type { CalendarEvent, EventProfile, PreNews, ProfileAsset };
+export { EVENT_PROFILES, EVENTS_META, PRE_NEWS };
+export type { EventProfile, PreNews, ProfileAsset, Block, LiveEvent };
 
 export type Verdict = "CLEAR" | "CAUTION" | "NEWS DAY" | "MARKET CLOSED";
 
-export type Block = {
-  from: number; // epoch ms
-  to: number;
-  event: CalendarEvent;
-  profile: EventProfile | undefined;
-};
-
 export const assetOf = (instrument: Instrument): ProfileAsset =>
   instrument === "XAUUSDT" ? "GOLD" : "BTC";
-
-/** Minimum stand-aside window by tier, in minutes, applied even if the history is milder. */
-const FLOOR: Record<number, [number, number]> = { 1: [30, 45], 2: [15, 30], 3: [5, 15] };
-/** Listed for context but not blocked: the study found little effect on gold/BTC. */
-const QUIET_KINDS = new Set(["MONTH_END", "QUARTER_END", "NVDA"]);
 
 const MIN = 60_000;
 
@@ -52,66 +39,32 @@ export const istDayLabel = (ms: number) =>
     month: "short",
   }).format(new Date(ms));
 
-export const eventTime = (event: CalendarEvent) => Date.parse(event.time);
+export const eventTime = (event: LiveEvent) => event.time;
 
-const BY_IST_DAY = new Map<string, CalendarEvent[]>();
-for (const e of EVENT_CALENDAR) {
-  const key = istDateKey(new Date(eventTime(e)));
-  BY_IST_DAY.set(key, [...(BY_IST_DAY.get(key) ?? []), e]);
+export function eventsOnIstDay(events: readonly LiveEvent[], dateKey: string): LiveEvent[] {
+  return events.filter((e) => istDateKey(new Date(e.time)) === dateKey);
 }
 
-export function eventsOnIstDay(dateKey: string): CalendarEvent[] {
-  return BY_IST_DAY.get(dateKey) ?? [];
-}
-
-export function upcomingEvents(now: Date, days = 7, maxTier = 2): CalendarEvent[] {
+export function upcomingEvents(
+  events: readonly LiveEvent[],
+  now: Date,
+  days = 7,
+  maxTier = 2,
+): LiveEvent[] {
   const start = now.getTime() - 3 * 60 * MIN;
   const end = now.getTime() + days * 1440 * MIN;
-  return EVENT_CALENDAR.filter((e) => {
-    const t = eventTime(e);
-    return t >= start && t <= end && e.tier <= maxTier;
-  });
-}
-
-/** Stand-aside window for one event: history says how long the market is abnormal, floors keep it sane. */
-export function blockFor(event: CalendarEvent, instrument: Instrument): Block {
-  const profile = EVENT_PROFILES[assetOf(instrument)][event.kind];
-  const [floorBefore, floorAfter] = FLOOR[event.tier] ?? [5, 15];
-  const before = Math.max(floorBefore, profile?.blockBefore ?? 0);
-  const after = Math.min(180, Math.max(floorAfter, profile?.blockAfter ?? 0));
-  const t = eventTime(event);
-  return { from: t - before * MIN, to: t + after * MIN, event, profile };
-}
-
-/** Merge overlapping blocks so clustered releases (e.g. PCE + GDP + claims at 18:00) read as one. */
-export function mergeBlocks(blocks: Block[]): Block[] {
-  const sorted = [...blocks].sort((a, b) => a.from - b.from);
-  const out: Block[] = [];
-  for (const b of sorted) {
-    const last = out[out.length - 1];
-    if (last && b.from <= last.to) {
-      last.to = Math.max(last.to, b.to);
-      if (b.event.tier < last.event.tier) {
-        last.event = b.event;
-        last.profile = b.profile;
-      }
-    } else out.push({ ...b });
-  }
-  return out;
+  return events.filter((e) => e.time >= start && e.time <= end && e.tier <= maxTier);
 }
 
 /** Blocks overlapping an IST calendar day, including ones spilling over midnight (e.g. FOMC). */
-export function blocksForIstDay(dateKey: string, instrument: Instrument): Block[] {
+export function blocksForIstDay(
+  events: readonly LiveEvent[],
+  dateKey: string,
+  instrument: Instrument,
+): Block[] {
   const dayStart = Date.parse(`${dateKey}T00:00:00+05:30`);
   const dayEnd = dayStart + 1440 * MIN;
-  const nearby = [-1, 0, 1].flatMap((offset) =>
-    eventsOnIstDay(istDateKey(new Date(dayStart + offset * 1440 * MIN + 12 * 60 * MIN))),
-  );
-  const blocks = nearby
-    .filter((e) => !QUIET_KINDS.has(e.kind))
-    .map((e) => blockFor(e, instrument))
-    .filter((b) => b.to > dayStart && b.from < dayEnd);
-  return mergeBlocks(blocks);
+  return buildBlocks(events, assetOf(instrument)).filter((b) => b.to > dayStart && b.from < dayEnd);
 }
 
 export function isGoldWeekend(date: Date): boolean {
@@ -127,7 +80,7 @@ export type DayVerdict = {
   verdict: Verdict;
   headline: string;
   lines: string[];
-  events: CalendarEvent[];
+  events: LiveEvent[];
   blocks: Block[];
 };
 
@@ -136,26 +89,43 @@ const pct = (v: number | null | undefined) => (v == null ? "—" : `${Math.round
 /** Releases whose run-up was studied in research/pre_news.py. */
 const LOOKAHEAD_KINDS = new Set(["FOMC", "CPI", "NFP", "PCE"]);
 
-export type Upcoming = { event: CalendarEvent; pre: PreNews };
+export type Upcoming = { event: LiveEvent; pre: PreNews };
 
 /** Big releases in the next 72h (not today) with how the days before them usually trade. */
-export function upcomingRunUps(now: Date, instrument: Instrument): Upcoming[] {
+export function upcomingRunUps(
+  events: readonly LiveEvent[],
+  now: Date,
+  instrument: Instrument,
+): Upcoming[] {
   const t = now.getTime();
   const todayKey = istDateKey(now);
   const asset = assetOf(instrument);
-  return EVENT_CALENDAR.flatMap((event) => {
+  return events.flatMap((event) => {
     const at = eventTime(event);
-    const pre = PRE_NEWS[asset][event.kind];
-    if (!LOOKAHEAD_KINDS.has(event.kind) || !pre || at <= t || at - t > 72 * 60 * MIN) return [];
+    const pre = event.kind ? PRE_NEWS[asset][event.kind] : undefined;
+    if (
+      !event.kind ||
+      !LOOKAHEAD_KINDS.has(event.kind) ||
+      !pre ||
+      at <= t ||
+      at - t > 72 * 60 * MIN
+    )
+      return [];
     if (istDateKey(new Date(at)) === todayKey) return [];
     return [{ event, pre }];
   });
 }
 
-export function dayVerdict(date: Date, instrument: Instrument): DayVerdict {
+/** `feed` = every release the live feed knows; `feedOk` = false when the feed could not be reached. */
+export function dayVerdict(
+  feed: readonly LiveEvent[],
+  feedOk: boolean,
+  date: Date,
+  instrument: Instrument,
+): DayVerdict {
   const key = istDateKey(date);
-  const events = eventsOnIstDay(key);
-  const blocks = blocksForIstDay(key, instrument);
+  const events = eventsOnIstDay(feed, key);
+  const blocks = blocksForIstDay(feed, key, instrument);
   const asset = assetOf(instrument);
   const top = [...events].sort((a, b) => a.tier - b.tier)[0];
 
@@ -171,7 +141,7 @@ export function dayVerdict(date: Date, instrument: Instrument): DayVerdict {
   }
 
   const lines: string[] = [];
-  const runUps = upcomingRunUps(date, instrument);
+  const runUps = upcomingRunUps(feed, date, instrument);
   for (const { event, pre } of runUps) {
     lines.push(
       `${event.name} on ${istDayLabel(eventTime(event))}, ${istClock(eventTime(event))} IST. ${pre.verdict}`,
@@ -201,6 +171,16 @@ export function dayVerdict(date: Date, instrument: Instrument): DayVerdict {
     }
   }
 
+  if (!feedOk) {
+    return {
+      verdict: "CAUTION",
+      headline:
+        "News feed unreachable, so today's releases are unknown. Check a live economic calendar before trading.",
+      lines,
+      events,
+      blocks,
+    };
+  }
   if (!top || blocks.length === 0) {
     return {
       verdict: "CLEAR",

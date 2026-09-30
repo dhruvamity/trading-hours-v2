@@ -1,6 +1,8 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
-import { FileBarChart2, MoonStar } from "lucide-react";
+import { FileBarChart2, MoonStar, Newspaper } from "lucide-react";
+import { NewsPanel } from "@/components/news-panel";
+import { activeBlock, blocksForIstDay, istDateKey } from "@/lib/events";
 import {
   DAYS,
   INSTRUMENTS,
@@ -123,6 +125,19 @@ function Index() {
       )
     : -1;
 
+  // News blocks for the day shown on the rail (today, or that weekday's next occurrence).
+  const railDate = new Date(
+    (now ?? new Date(0)).getTime() +
+      ((DAYS.indexOf(day) - DAYS.indexOf(ist.day) + 7) % 7) * 86_400_000,
+  );
+  const railKey = istDateKey(railDate);
+  const railBlocks = now ? blocksForIstDay(railKey, instrument) : [];
+  const newsBlock = now
+    ? activeBlock(now, blocksForIstDay(istDateKey(now), instrument))
+    : undefined;
+  const dayStartMs = Date.parse(`${railKey}T00:00:00+05:30`);
+  const railMinute = (ms: number) => Math.min(1440, Math.max(0, (ms - dayStartMs) / 60_000));
+
   const statusAt = (minutes: number): Window | undefined =>
     sessions.find((slot) => minutes >= toMinutes(slot.start) && minutes < toMinutes(slot.end));
   const handleRailMove = (event: React.MouseEvent<HTMLDivElement>) => {
@@ -158,21 +173,27 @@ function Index() {
         <header className="flex flex-col gap-5 border-b border-border pb-6 sm:flex-row sm:items-end sm:justify-between">
           <div>
             <h1 className="text-3xl font-bold sm:text-4xl">Trading hours</h1>
-            <a
-              href="/report.html"
-              className="mt-2 inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
-            >
-              <FileBarChart2 className="size-4" aria-hidden="true" />
-              Research report
-            </a>
+            <div className="mt-2 flex gap-5">
+              <a
+                href="/report.html"
+                className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                <FileBarChart2 className="size-4" aria-hidden="true" />
+                Research report
+              </a>
+              <a
+                href="/news.html"
+                className="inline-flex items-center gap-2 text-sm font-medium text-muted-foreground hover:text-foreground"
+              >
+                <Newspaper className="size-4" aria-hidden="true" />
+                News study
+              </a>
+            </div>
           </div>
           <div className="flex items-center gap-3 sm:text-right">
             <MoonStar className="size-5 text-muted-foreground" aria-hidden="true" />
             <div>
-              <div
-                className="text-3xl font-bold tabular-nums sm:text-4xl"
-                aria-live="polite"
-              >
+              <div className="text-3xl font-bold tabular-nums sm:text-4xl" aria-live="polite">
                 {now ? ist.time : "--:--:--"}
                 <span className="ml-2 text-sm font-medium text-muted-foreground">IST</span>
               </div>
@@ -236,30 +257,48 @@ function Index() {
           </div>
         </section>
 
+        <NewsPanel now={now} instrument={instrument} />
+
         <section
           className="mt-4 grid gap-px border border-border bg-border md:grid-cols-3"
           aria-label="Live guidance"
         >
           <div className="bg-panel p-5">
             <p className="terminal-label">Now · {instrument}</p>
-            <div className="mt-2.5 flex items-center gap-2.5">
-              <span className={`size-3 rounded-full ${bg(live.current?.status ?? "CLOSED")}`} />
-              <p className={`text-2xl font-bold ${fg(live.current?.status ?? "CLOSED")}`}>
-                {now ? (live.current?.status ?? "CLOSED") : "—"}
-              </p>
-            </div>
-            <p className="mt-3 text-base tabular-nums text-muted-foreground">
-              {now && live.current
-                ? `until ${clock(live.current.to % 1440)} · ${formatCountdown(live.endsIn)}`
-                : "—"}
-            </p>
+            {newsBlock ? (
+              <>
+                <div className="mt-2.5 flex items-center gap-2.5">
+                  <Newspaper className="size-5 text-status-stop" aria-hidden="true" />
+                  <p className="text-2xl font-bold text-status-stop">NEWS · STAND ASIDE</p>
+                </div>
+                <p className="mt-3 text-base tabular-nums text-muted-foreground">
+                  until {clock(railMinute(newsBlock.to))} ·{" "}
+                  {formatCountdown((newsBlock.to - (now?.getTime() ?? 0)) / 60_000)}
+                </p>
+                <p className="mt-1 text-sm text-muted-foreground">
+                  {newsBlock.event.name}. Timetable resumes after this.
+                </p>
+              </>
+            ) : (
+              <>
+                <div className="mt-2.5 flex items-center gap-2.5">
+                  <span className={`size-3 rounded-full ${bg(live.current?.status ?? "CLOSED")}`} />
+                  <p className={`text-2xl font-bold ${fg(live.current?.status ?? "CLOSED")}`}>
+                    {now ? (live.current?.status ?? "CLOSED") : "—"}
+                  </p>
+                </div>
+                <p className="mt-3 text-base tabular-nums text-muted-foreground">
+                  {now && live.current
+                    ? `until ${clock(live.current.to % 1440)} · ${formatCountdown(live.endsIn)}`
+                    : "—"}
+                </p>
+              </>
+            )}
           </div>
           <div className="bg-panel p-5">
             <p className="terminal-label">Next change</p>
             <div className="mt-2.5 flex items-baseline justify-between gap-3">
-              <p
-                className={`text-2xl font-bold ${live.next ? fg(live.next.window.status) : ""}`}
-              >
+              <p className={`text-2xl font-bold ${live.next ? fg(live.next.window.status) : ""}`}>
                 {now && live.next ? live.next.window.status : "—"}
               </p>
               <p className="text-base tabular-nums text-muted-foreground">
@@ -366,6 +405,17 @@ function Index() {
                   }}
                 />
               ))}
+              {railBlocks.map((block) => (
+                <div
+                  key={block.from}
+                  className="news-block absolute inset-y-0 z-[5] border-x border-status-stop"
+                  style={{
+                    left: `${railMinute(block.from) / 14.4}%`,
+                    width: `${(railMinute(block.to) - railMinute(block.from)) / 14.4}%`,
+                  }}
+                  title={`${block.event.name}: stand aside ${clock(railMinute(block.from))}–${clock(railMinute(block.to))} IST`}
+                />
+              ))}
               {isLiveDay && (
                 <div
                   className="absolute inset-y-0 z-10 w-px bg-live-marker"
@@ -407,6 +457,10 @@ function Index() {
                 <span className="text-xs font-semibold text-muted-foreground">{status}</span>
               </div>
             ))}
+            <div className="flex items-center gap-2">
+              <span className="news-block size-3 border border-status-stop" />
+              <span className="text-xs font-semibold text-muted-foreground">NEWS BLOCK</span>
+            </div>
           </div>
         </section>
 
@@ -429,9 +483,7 @@ function Index() {
               </span>
               <span className="flex items-center gap-2.5 whitespace-nowrap text-sm font-bold sm:text-base">
                 <span className={`size-2.5 shrink-0 rounded-full ${bg(slot.status)}`} />
-                <span className={index === activeIndex ? fg(slot.status) : ""}>
-                  {slot.status}
-                </span>
+                <span className={index === activeIndex ? fg(slot.status) : ""}>{slot.status}</span>
                 {index === activeIndex && (
                   <span className="hidden border border-current px-1.5 py-0.5 text-xs font-bold uppercase sm:inline">
                     Live

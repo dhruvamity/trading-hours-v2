@@ -2,6 +2,8 @@ import { createFileRoute } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { FileBarChart2, MoonStar, Newspaper } from "lucide-react";
 import { NewsPanel } from "@/components/news-panel";
+import { GatePanel } from "@/components/gate-panel";
+import { useNews } from "@/lib/use-news";
 import { activeBlock, blocksForIstDay, istDateKey } from "@/lib/events";
 import {
   DAYS,
@@ -101,6 +103,7 @@ function Index() {
   const [selectedDay, setSelectedDay] = useState<Day | null>(null);
   const [regimeOverride, setRegimeOverride] = useState<Regime | null>(null);
   const [hoverPercent, setHoverPercent] = useState<number | null>(null);
+  const feed = useNews();
 
   useEffect(() => {
     setNow(new Date());
@@ -131,9 +134,9 @@ function Index() {
       ((DAYS.indexOf(day) - DAYS.indexOf(ist.day) + 7) % 7) * 86_400_000,
   );
   const railKey = istDateKey(railDate);
-  const railBlocks = now ? blocksForIstDay(railKey, instrument) : [];
+  const railBlocks = now ? blocksForIstDay(feed.events, railKey, instrument) : [];
   const newsBlock = now
-    ? activeBlock(now, blocksForIstDay(istDateKey(now), instrument))
+    ? activeBlock(now, blocksForIstDay(feed.events, istDateKey(now), instrument))
     : undefined;
   const dayStartMs = Date.parse(`${railKey}T00:00:00+05:30`);
   const railMinute = (ms: number) => Math.min(1440, Math.max(0, (ms - dayStartMs) / 60_000));
@@ -257,7 +260,15 @@ function Index() {
           </div>
         </section>
 
-        <NewsPanel now={now} instrument={instrument} />
+        <GatePanel
+          now={now}
+          instrument={instrument}
+          feed={feed}
+          windowStatus={live.current?.status ?? "CLOSED"}
+          windowEnd={live.current ? clock(live.current.to % 1440) : null}
+        />
+
+        <NewsPanel now={now} instrument={instrument} feed={feed} />
 
         <section
           className="mt-4 grid gap-px border border-border bg-border md:grid-cols-3"

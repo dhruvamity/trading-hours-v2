@@ -1,7 +1,7 @@
 import { CalendarClock, Newspaper } from "lucide-react";
 import type { Instrument } from "@/lib/timetable";
+import type { NewsFeed } from "@/lib/use-news";
 import {
-  EVENTS_META,
   activeBlock,
   dayVerdict,
   eventTime,
@@ -36,13 +36,22 @@ function countdown(ms: number) {
   return `in ${m}m`;
 }
 
-export function NewsPanel({ now, instrument }: { now: Date | null; instrument: Instrument }) {
+export function NewsPanel({
+  now,
+  instrument,
+  feed,
+}: {
+  now: Date | null;
+  instrument: Instrument;
+  feed: NewsFeed;
+}) {
   if (!now) return null;
-  const today = dayVerdict(now, instrument);
+  const feedOk = feed.ok || (feed.loading && feed.events.length === 0);
+  const today = dayVerdict(feed.events, feedOk, now, instrument);
   const blocked = activeBlock(now, today.blocks);
   const tone = verdictTone[today.verdict];
   const todayKey = istDateKey(now);
-  const upcoming = upcomingEvents(now, 7).filter(
+  const upcoming = upcomingEvents(feed.events, now, 7).filter(
     (e) => istDateKey(new Date(eventTime(e))) !== todayKey,
   );
 
@@ -89,7 +98,7 @@ export function NewsPanel({ now, instrument }: { now: Date | null; instrument: I
           <div className="mt-4 border-t border-border pt-3">
             {today.events.map((e) => (
               <div
-                key={`${e.time}-${e.kind}`}
+                key={`${e.time}-${e.name}`}
                 className="flex items-baseline justify-between gap-3 py-1.5 text-sm"
               >
                 <span className="tabular-nums">{istClock(eventTime(e))}</span>
@@ -116,7 +125,7 @@ export function NewsPanel({ now, instrument }: { now: Date | null; instrument: I
           <div className="mt-2">
             {upcoming.map((e) => (
               <div
-                key={`${e.time}-${e.kind}`}
+                key={`${e.time}-${e.name}`}
                 className="flex items-baseline justify-between gap-3 border-b border-border/60 py-2 text-sm last:border-b-0"
               >
                 <span className="w-28 shrink-0 text-muted-foreground">
@@ -134,9 +143,13 @@ export function NewsPanel({ now, instrument }: { now: Date | null; instrument: I
           </div>
         )}
         <p className="mt-3 text-xs text-muted-foreground">
-          US releases from BLS / BEA / Fed schedules · calendar through{" "}
-          {EVENTS_META.calendarThrough}. Fed speeches and surprise headlines are not listed — check
-          a live calendar too.
+          {feed.fetchedAt
+            ? `Live US calendar feed, updated ${istClock(feed.fetchedAt)} IST.`
+            : feed.loading
+              ? "Loading the live US calendar…"
+              : "Live feed unreachable."}{" "}
+          It shows the current and next week only. Surprise headlines are not listed — check a live
+          calendar too.
         </p>
       </div>
     </section>

@@ -1,18 +1,18 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
+import { NewsDrawer } from "@/components/news-drawer";
 import { Signal } from "@/components/signal";
 import { blocksForIstDay, istDateKey } from "@/lib/events";
 import { clock } from "@/lib/format";
+import { useGate } from "@/lib/use-gate";
 import { useNews } from "@/lib/use-news";
 import {
   DAYS,
   INSTRUMENTS,
   RESEARCH_META,
   SCHEDULES,
-  locate,
   toMinutes,
   usRegime,
-  weekTimeline,
   type Day,
   type Instrument,
   type Status,
@@ -92,8 +92,7 @@ function Index() {
   const sessions = SCHEDULES[instrument][regime][day].windows;
   const isLiveDay = now !== null && day === ist.day;
 
-  const timeline = useMemo(() => weekTimeline(instrument, regime), [instrument, regime]);
-  const live = locate(timeline, DAYS.indexOf(ist.day) * 1440 + ist.minutes);
+  const gate = useGate(now, instrument, feed);
 
   // The rail shows the chosen weekday (today, or its next occurrence) with that day's news blocks.
   const railDate = new Date(
@@ -122,8 +121,6 @@ function Index() {
           : "-translate-x-1/2"
       : "";
 
-  const whenLabel = (w: { day: Day; from: number }) =>
-    `${w.day === ist.day ? "Today" : w.day.slice(0, 3)} ${clock(w.from % 1440)}`;
   const tradeWindows = sessions.filter((slot) => BEST.includes(slot.status));
 
   return (
@@ -143,31 +140,23 @@ function Index() {
               </button>
             ))}
           </div>
-          <div className="text-right" aria-live="polite">
-            <span className="text-3xl font-bold tabular-nums">{now ? ist.time : "--:--:--"}</span>
-            <span className="ml-2 text-sm font-medium text-muted-foreground">
-              IST · {now ? ist.day.slice(0, 3) : ""}
-            </span>
+          <div className="flex items-center gap-5">
+            <Link
+              to="/journal"
+              className="text-sm font-semibold text-muted-foreground hover:text-foreground"
+            >
+              Journal →
+            </Link>
+            <div className="text-right" aria-live="polite">
+              <span className="text-3xl font-bold tabular-nums">{now ? ist.time : "--:--:--"}</span>
+              <span className="ml-2 text-sm font-medium text-muted-foreground">
+                IST · {now ? ist.day.slice(0, 3) : ""}
+              </span>
+            </div>
           </div>
         </header>
 
-        <Signal
-          now={now}
-          instrument={instrument}
-          feed={feed}
-          windowStatus={live.current?.status ?? "CLOSED"}
-          windowEnd={live.current ? clock(live.current.to % 1440) : null}
-          endsIn={now && live.current ? live.endsIn : null}
-          next={
-            now && live.next
-              ? {
-                  status: live.next.window.status,
-                  startsIn: live.next.startsIn,
-                  at: whenLabel(live.next.window),
-                }
-              : null
-          }
-        />
+        <Signal g={gate} today={now ? ist.day : null} />
 
         <section
           className="mt-6 border border-border bg-panel p-4 sm:p-5"
@@ -262,7 +251,7 @@ function Index() {
             </div>
           </div>
 
-          <div className="mt-5 grid gap-3 border-t border-border pt-4 text-base sm:grid-cols-2">
+          <div className="mt-5 border-t border-border pt-4 text-base">
             <div>
               <p className="terminal-label">Best windows</p>
               <ul className="mt-2 space-y-1.5">
@@ -283,36 +272,10 @@ function Index() {
                 ))}
               </ul>
             </div>
-            <div>
-              <p className="terminal-label">News</p>
-              <ul className="mt-2 space-y-1.5">
-                {railBlocks.length === 0 && (
-                  <li className="text-muted-foreground">
-                    {feed.ok || feed.loading
-                      ? "No news blocks."
-                      : "Feed unreachable. Check a live calendar."}
-                  </li>
-                )}
-                {railBlocks.map((block) => (
-                  <li key={block.from} className="flex items-baseline gap-2 tabular-nums">
-                    <span>{clock(railMinute(block.event.time))}</span>
-                    <span
-                      className={`truncate text-sm font-semibold ${tierTone[block.event.tier]}`}
-                    >
-                      {block.profile?.name ?? block.event.name}
-                      {block.names.length > 1 ? ` +${block.names.length - 1}` : ""}
-                    </span>
-                  </li>
-                ))}
-              </ul>
-            </div>
           </div>
         </section>
 
         <footer className="mt-6 flex flex-wrap items-center gap-x-5 gap-y-2 text-sm text-muted-foreground">
-          <Link to="/journal" className="font-medium hover:text-foreground">
-            Journal
-          </Link>
           <a href="/news.html" className="font-medium hover:text-foreground">
             News study
           </a>
@@ -322,6 +285,7 @@ function Index() {
           <span className="sm:ml-auto">Data through {RESEARCH_META.dataThrough}</span>
         </footer>
       </div>
+      <NewsDrawer feed={feed} now={now} />
     </main>
   );
 }

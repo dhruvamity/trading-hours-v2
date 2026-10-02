@@ -2,7 +2,11 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { useEffect, useMemo, useState } from "react";
 import { dayKey, dayStats, lockStatus, LOCK_DAY_PCT, LOCK_LOSSES } from "@/lib/discipline";
 import { FLAGS, flagsOf, rightAndWrong, summarizeWeeks, weekKey } from "@/lib/review";
-import { emptyDay, useJournal, useTrades, type JournalDay } from "@/lib/trade-log";
+import { emptyDay, newId, useJournal, useTrades, type JournalDay } from "@/lib/trade-log";
+import { useGate } from "@/lib/use-gate";
+import { useNews } from "@/lib/use-news";
+import type { Instrument } from "@/lib/timetable";
+import type { TradeEntry } from "@/lib/discipline";
 
 export const Route = createFileRoute("/journal")({
   head: () => ({ meta: [{ title: "Journal & Weekly Review — IST Session Terminal" }] }),
@@ -32,6 +36,39 @@ function Journal() {
     setNow(t);
     setDate(dayKey(t));
   }, []);
+
+  const feed = useNews();
+  const [instrument, setInstrument] = useState<Instrument>("XAUUSDT");
+  const [side, setSide] = useState<"long" | "short">("long");
+  const [confirming, setConfirming] = useState(false);
+  const [resultPct, setResultPct] = useState("");
+  const gate = useGate(now ? new Date(now) : null, instrument, feed);
+  const take = () => {
+    const entry: TradeEntry = {
+      id: newId(),
+      instrument,
+      side,
+      openedAt: Date.now(),
+      note: "",
+      verdict: gate.verdict,
+      failed: gate.checks.filter((c) => c.state === "fail").map((c) => c.id),
+      warned: gate.checks.filter((c) => c.state === "warn").map((c) => c.id),
+    };
+    setTrades((old) => [...old, entry]);
+    setConfirming(false);
+  };
+  const closeTrade = (result: "win" | "loss") => {
+    const v = resultPct.trim() === "" ? NaN : Number(resultPct);
+    const signed = Number.isNaN(v) ? undefined : result === "loss" ? -Math.abs(v) : Math.abs(v);
+    setTrades((old) =>
+      old.map((x) =>
+        x.id === gate.open?.id
+          ? { ...x, closedAt: Date.now(), result, ...(signed === undefined ? {} : { pct: signed }) }
+          : x,
+      ),
+    );
+    setResultPct("");
+  };
 
   const day = date ? (days[date] ?? emptyDay(date)) : null;
   const stats = useMemo(() => (date ? dayStats(trades, date) : null), [trades, date]);
@@ -109,6 +146,99 @@ function Journal() {
       </section>
 
       <section className="mt-4 border border-border bg-panel p-5">
+        <h2 className="text-lg font-bold">Log a trade</h2>
+        <p className="mt-1 text-base">
+          Gate now:{" "}
+          <span
+            className={
+              gate.verdict === "GO"
+                ? "font-bold text-status-prime"
+                : gate.verdict === "NO-GO"
+                  ? "font-bold text-status-stop"
+                  : "font-bold text-status-small"
+            }
+          >
+            {gate.verdict}
+          </span>
+          {gate.checks.filter((c) => c.state !== "pass").map((c) => ` · ${c.detail}`)}
+        </p>
+        {gate.open ? (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-base">
+            <span className="font-semibold">
+              Open: {gate.open.instrument === "XAUUSDT" ? "Gold" : "BTC"} {gate.open.side}
+            </span>
+            <input
+              value={resultPct}
+              onChange={(e) => setResultPct(e.target.value)}
+              inputMode="decimal"
+              placeholder="result % of account (optional)"
+              aria-label="Result in percent of account"
+              className="w-64 border border-border bg-background px-2 py-1.5"
+            />
+            <button
+              onClick={() => closeTrade("win")}
+              className="border border-status-prime px-3 py-1.5 font-semibold text-status-prime"
+            >
+              Closed: won
+            </button>
+            <button
+              onClick={() => closeTrade("loss")}
+              className="border border-status-stop px-3 py-1.5 font-semibold text-status-stop"
+            >
+              Closed: lost
+            </button>
+          </div>
+        ) : (
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-base">
+            {(["XAUUSDT", "BTCUSDT"] as const).map((i) => (
+              <button
+                key={i}
+                onClick={() => setInstrument(i)}
+                className={`border px-3 py-1.5 font-semibold ${instrument === i ? "border-foreground" : "border-border text-muted-foreground"}`}
+              >
+                {i === "XAUUSDT" ? "Gold" : "BTC"}
+              </button>
+            ))}
+            {(["long", "short"] as const).map((s) => (
+              <button
+                key={s}
+                onClick={() => setSide(s)}
+                className={`border px-3 py-1.5 font-semibold capitalize ${side === s ? "border-foreground" : "border-border text-muted-foreground"}`}
+              >
+                {s}
+              </button>
+            ))}
+            {confirming ? (
+              <>
+                <button
+                  onClick={take}
+                  className="border border-status-stop px-3 py-1.5 font-semibold text-status-stop"
+                >
+                  Enter anyway (logs a rule break)
+                </button>
+                <button
+                  onClick={() => setConfirming(false)}
+                  className="px-2 py-1.5 text-muted-foreground"
+                >
+                  Cancel
+                </button>
+              </>
+            ) : (
+              <button
+                onClick={() => (gate.verdict === "NO-GO" ? setConfirming(true) : take())}
+                className="border border-foreground px-3 py-1.5 font-semibold"
+              >
+                Log entry
+              </button>
+            )}
+          </div>
+        )}
+        <p className="mt-2 text-sm text-muted-foreground">
+          Log right before you enter. It records what the gate said.
+        </p>
+      </section>
+
+      <section className="mt-4 border border-border bg-panel p-5">
         <h2 className="text-lg font-bold">Before trading: the plan</h2>
         <div className="mt-2 flex items-center gap-2 text-sm text-muted-foreground">
           Mood:
@@ -137,7 +267,7 @@ function Journal() {
         <h2 className="text-lg font-bold">Trades ({dayTrades.length})</h2>
         {dayTrades.length === 0 ? (
           <p className="mt-2 text-base text-muted-foreground">
-            No entries logged. Use "Log entry" on the timetable page right before you trade.
+            No entries logged. Use "Log entry" above right before you trade.
           </p>
         ) : (
           <div className="mt-3 grid gap-3">
@@ -214,7 +344,7 @@ function Journal() {
         <h2 className="text-lg font-bold">Weekly review{cur ? ` · week of ${cur.week}` : ""}</h2>
         {!cur || !verdict ? (
           <p className="mt-2 text-base text-muted-foreground">
-            Nothing yet. Log entries and closes on the timetable page and this fills itself in.
+            Nothing yet. Log entries and closes above and this fills itself in.
           </p>
         ) : (
           <>

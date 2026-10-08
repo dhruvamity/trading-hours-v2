@@ -142,6 +142,12 @@ function Index() {
           </div>
           <div className="flex items-center gap-5">
             <Link
+              to="/filter"
+              className="text-sm font-semibold text-muted-foreground hover:text-foreground"
+            >
+              Day filter →
+            </Link>
+            <Link
               to="/journal"
               className="text-sm font-semibold text-muted-foreground hover:text-foreground"
             >

@@ -275,7 +275,7 @@ function Filter() {
               to="/"
               className="text-sm font-semibold text-muted-foreground hover:text-foreground"
             >
-              ← Signal
+              ← Trading hours
             </Link>
             <Link
               to="/journal"

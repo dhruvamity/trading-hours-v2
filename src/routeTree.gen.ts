@@ -10,12 +10,18 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as FilterRouteImport } from './routes/filter'
 import { Route as JournalRouteImport } from './routes/journal'
 import { Route as ApiNewsRouteImport } from './routes/api.news'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const FilterRoute = FilterRouteImport.update({
+  id: '/filter',
+  path: '/filter',
   getParentRoute: () => rootRouteImport,
 } as any)
 const JournalRoute = JournalRouteImport.update({
@@ -31,30 +37,34 @@ const ApiNewsRoute = ApiNewsRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/filter': typeof FilterRoute
   '/journal': typeof JournalRoute
   '/api/news': typeof ApiNewsRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/filter': typeof FilterRoute
   '/journal': typeof JournalRoute
   '/api/news': typeof ApiNewsRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/filter': typeof FilterRoute
   '/journal': typeof JournalRoute
   '/api/news': typeof ApiNewsRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/journal' | '/api/news'
+  fullPaths: '/' | '/filter' | '/journal' | '/api/news'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/journal' | '/api/news'
-  id: '__root__' | '/' | '/journal' | '/api/news'
+  to: '/' | '/filter' | '/journal' | '/api/news'
+  id: '__root__' | '/' | '/filter' | '/journal' | '/api/news'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  FilterRoute: typeof FilterRoute
   JournalRoute: typeof JournalRoute
   ApiNewsRoute: typeof ApiNewsRoute
 }
@@ -66,6 +76,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/filter': {
+      id: '/filter'
+      path: '/filter'
+      fullPath: '/filter'
+      preLoaderRoute: typeof FilterRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/journal': {
@@ -87,6 +104,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  FilterRoute: FilterRoute,
   JournalRoute: JournalRoute,
   ApiNewsRoute: ApiNewsRoute,
 }

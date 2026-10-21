@@ -173,6 +173,12 @@ function Index() {
                 Day filter →
               </Link>
               <Link
+                to="/grade"
+                className="text-sm font-semibold text-muted-foreground hover:text-foreground"
+              >
+                Market grade →
+              </Link>
+              <Link
                 to="/journal"
                 className="text-sm font-semibold text-muted-foreground hover:text-foreground"
               >

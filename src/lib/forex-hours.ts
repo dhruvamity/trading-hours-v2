@@ -7,6 +7,8 @@
  * IST.
  */
 
+import type { Status } from "./timetable";
+
 export const FOREX_SOURCE_URL = "https://www.babypips.com/tools/forex-market-hours";
 
 export const FOREX_SESSIONS = [
@@ -197,4 +199,151 @@ export function activeForexSessions(date: Date) {
       minutes < session.endHour * 60
     );
   });
+}
+
+export type ForexWindow = {
+  start: string;
+  end: string;
+  status: Status;
+  score: number | null;
+  label: string;
+  activeSessions: ForexSession[];
+};
+
+export type ForexDaySchedule = {
+  windows: ForexWindow[];
+  profile: (number | null)[];
+  profileStatuses: Status[];
+};
+
+export function evaluateForexInstant(date: Date): {
+  status: Status;
+  score: number | null;
+  label: string;
+  activeSessions: ForexSession[];
+} {
+  const open = isForexMarketOpen(date);
+  if (!open) {
+    return {
+      status: "CLOSED",
+      score: null,
+      label: "Market closed",
+      activeSessions: [],
+    };
+  }
+
+  const active = activeForexSessions(date);
+  const ids = new Set(active.map((s) => s.id));
+
+  if (ids.has("london") && ids.has("new-york")) {
+    return {
+      status: "PRIME",
+      score: 2.15,
+      label: "London + NY overlap",
+      activeSessions: active,
+    };
+  }
+  if (ids.has("london")) {
+    if (ids.has("tokyo")) {
+      return {
+        status: "SWING ENTRY",
+        score: 1.55,
+        label: "Tokyo + London crossover",
+        activeSessions: active,
+      };
+    }
+    return {
+      status: "SWING ENTRY",
+      score: 1.7,
+      label: "London main session",
+      activeSessions: active,
+    };
+  }
+  if (ids.has("new-york")) {
+    return {
+      status: "SMALL TRADES",
+      score: 1.2,
+      label: "New York session",
+      activeSessions: active,
+    };
+  }
+  if (ids.has("tokyo")) {
+    if (ids.has("sydney")) {
+      return {
+        status: "SMALL TRADES",
+        score: 1.1,
+        label: "Tokyo + Sydney overlap",
+        activeSessions: active,
+      };
+    }
+    return {
+      status: "NO TRADE",
+      score: 0.85,
+      label: "Tokyo session",
+      activeSessions: active,
+    };
+  }
+  if (ids.has("sydney")) {
+    return {
+      status: "NO TRADE",
+      score: 0.65,
+      label: "Sydney session",
+      activeSessions: active,
+    };
+  }
+  return {
+    status: "NO TRADE",
+    score: 0.45,
+    label: "Inter-session transition",
+    activeSessions: active,
+  };
+}
+
+/** Computes the 24-hour composite Forex windows and 48 half-hour profile for an IST date. */
+export function forexScheduleForIstDate(dateKey: string): ForexDaySchedule {
+  const { start: dayStart } = istDayBounds(dateKey);
+
+  // 48 profile half-hours across the day (at midpoint of each 30m)
+  const profile: (number | null)[] = [];
+  const profileStatuses: Status[] = [];
+  for (let i = 0; i < 48; i += 1) {
+    const midInstant = new Date(dayStart.getTime() + (i * 30 + 15) * 60 * 1000);
+    const evalResult = evaluateForexInstant(midInstant);
+    profile.push(evalResult.score);
+    profileStatuses.push(evalResult.status);
+  }
+
+  // Windows evaluated in 5-minute increments and merged
+  const windows: ForexWindow[] = [];
+  let current: ForexWindow | null = null;
+
+  for (let min = 0; min < 1440; min += 5) {
+    const instant = new Date(dayStart.getTime() + min * 60 * 1000);
+    const info = evaluateForexInstant(instant);
+    const hh = String(Math.floor(min / 60)).padStart(2, "0");
+    const mm = String(min % 60).padStart(2, "0");
+    const timeStr = `${hh}:${mm}`;
+
+    if (!current || current.status !== info.status || current.label !== info.label) {
+      if (current) {
+        current.end = timeStr;
+        windows.push(current);
+      }
+      current = {
+        start: timeStr,
+        end: "24:00",
+        status: info.status,
+        score: info.score,
+        label: info.label,
+        activeSessions: info.activeSessions,
+      };
+    }
+  }
+
+  if (current) {
+    current.end = "24:00";
+    windows.push(current);
+  }
+
+  return { windows, profile, profileStatuses };
 }

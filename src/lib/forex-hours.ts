@@ -7,7 +7,7 @@
  * IST.
  */
 
-import type { Status } from "./timetable";
+import type { Day, Status } from "./timetable";
 
 export const FOREX_SOURCE_URL = "https://www.babypips.com/tools/forex-market-hours";
 
@@ -15,38 +15,38 @@ export const FOREX_SESSIONS = [
   {
     id: "sydney",
     name: "Sydney",
+    code: "SYD",
     timeZone: "Australia/Sydney",
     localHours: "07:00 — 16:00",
     startHour: 7,
     endHour: 16,
-    color: "bg-status-small",
   },
   {
     id: "tokyo",
     name: "Tokyo",
+    code: "TYO",
     timeZone: "Asia/Tokyo",
     localHours: "09:00 — 18:00",
     startHour: 9,
     endHour: 18,
-    color: "bg-status-swing",
   },
   {
     id: "london",
     name: "London",
+    code: "LDN",
     timeZone: "Europe/London",
     localHours: "08:00 — 17:00",
     startHour: 8,
     endHour: 17,
-    color: "bg-status-prime",
   },
   {
     id: "new-york",
     name: "New York",
+    code: "NYC",
     timeZone: "America/New_York",
     localHours: "08:00 — 17:00",
     startHour: 8,
     endHour: 17,
-    color: "bg-status-stop",
   },
 ] as const;
 
@@ -346,4 +346,77 @@ export function forexScheduleForIstDate(dateKey: string): ForexDaySchedule {
   }
 
   return { windows, profile, profileStatuses };
+}
+
+export type ForexTimelineWindow = ForexWindow & {
+  day: Day;
+  from: number;
+  to: number;
+};
+
+const WEEK_MINUTES = 7 * 1440;
+
+function toMinutesHelper(time: string) {
+  if (time === "24:00") return 1440;
+  const [hours = "0", minutes = "0"] = time.split(":");
+  return Number(hours) * 60 + Number(minutes);
+}
+
+const WEEK_DAYS: Day[] = [
+  "Monday",
+  "Tuesday",
+  "Wednesday",
+  "Thursday",
+  "Friday",
+  "Saturday",
+  "Sunday",
+];
+
+export function forexWeekTimeline(now: Date): ForexTimelineWindow[] {
+  const [year, month, day] = istDateKey(now).split("-").map(Number);
+  const currentDay = new Intl.DateTimeFormat("en-IN", {
+    timeZone: "Asia/Kolkata",
+    weekday: "long",
+  }).format(now) as Day;
+
+  const out: ForexTimelineWindow[] = [];
+
+  WEEK_DAYS.forEach((d, index) => {
+    const offset = WEEK_DAYS.indexOf(d) - WEEK_DAYS.indexOf(currentDay);
+    const dKey = new Date(Date.UTC(year!, month! - 1, day! + offset)).toISOString().slice(0, 10);
+    const sched = forexScheduleForIstDate(dKey);
+    for (const w of sched.windows) {
+      const from = index * 1440 + toMinutesHelper(w.start);
+      const to = index * 1440 + toMinutesHelper(w.end);
+      const last = out[out.length - 1];
+      if (last && last.status === w.status && last.label === w.label && last.to === from) {
+        last.to = to;
+      } else {
+        out.push({ ...w, day: d, from, to });
+      }
+    }
+  });
+
+  return out;
+}
+
+export function locateForex(timeline: ForexTimelineWindow[], at: number) {
+  const index = timeline.findIndex((w) => at >= w.from && at < w.to);
+  const upcoming = (predicate: (w: ForexTimelineWindow) => boolean) => {
+    for (let step = 1; step <= timeline.length; step += 1) {
+      const w = timeline[(index + step) % timeline.length]!;
+      if (predicate(w)) {
+        const startsIn = (w.from - at + WEEK_MINUTES) % WEEK_MINUTES;
+        return { window: w, startsIn };
+      }
+    }
+    return undefined;
+  };
+  const current = index >= 0 ? timeline[index] : undefined;
+  return {
+    current,
+    endsIn: current ? current.to - at : 0,
+    next: upcoming(() => true),
+    nextPrime: upcoming((w) => w.status === "PRIME"),
+  };
 }

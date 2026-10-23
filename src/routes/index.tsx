@@ -22,8 +22,10 @@ import {
   FOREX_SOURCE_URL,
   forexScheduleForIstDate,
   forexSessionsForIstDate,
+  forexWeekTimeline,
   isForexMarketOpen,
   istDateKey,
+  locateForex,
 } from "@/lib/forex-hours";
 
 export const Route = createFileRoute("/")({
@@ -105,6 +107,8 @@ const durationLabel = (start: string, end: string) => {
   const minutes = toMinutes(end) - toMinutes(start);
   return minutes % 60 === 0 ? `${minutes / 60}h` : `${Math.floor(minutes / 60)}h ${minutes % 60}m`;
 };
+const formatWhenLabel = (w: { day: Day; from: number }, currentDay?: Day) =>
+  `${w.day === currentDay ? "Today" : w.day.slice(0, 3)} ${clock(w.from % 1440)}`;
 
 type DashboardInstrument = Instrument | "FOREX";
 
@@ -546,22 +550,21 @@ function ForexHours({
   const active = now && marketOpen ? activeForexSessions(now) : [];
   const activeIds = new Set(active.map((session) => session.id));
 
+  const ist = useMemo(() => (now ? getIstParts(now) : null), [now]);
+  const liveMinutes = ist ? ist.minutes : 0;
+  const weekMinute = ist ? DAYS.indexOf(ist.day) * 1440 + ist.minutes : 0;
+
+  const forexTimeline = useMemo(() => (now ? forexWeekTimeline(now) : []), [now]);
+  const live = useMemo(
+    () => (now && forexTimeline.length > 0 ? locateForex(forexTimeline, weekMinute) : null),
+    [forexTimeline, weekMinute, now],
+  );
+
   const minutesFromIstMidnight = (date: Date) => getIstParts(date).minutes;
-  const liveMinutes = now ? minutesFromIstMidnight(now) : 0;
   const range = (start: Date, end: Date) =>
     `${clock(minutesFromIstMidnight(start))} — ${clock(minutesFromIstMidnight(end))}`;
 
   const sessionSegments = (id: string) => sessions.filter((segment) => segment.session.id === id);
-  const london = sessionSegments("london")[0];
-  const newYork = sessionSegments("new-york")[0];
-  const overlap =
-    london && newYork
-      ? {
-          start: new Date(Math.max(london.start.getTime(), newYork.start.getTime())),
-          end: new Date(Math.min(london.end.getTime(), newYork.end.getTime())),
-        }
-      : null;
-  const hasOverlap = overlap && overlap.end > overlap.start;
 
   const activeWindowIndex =
     isLiveDay && now
@@ -569,7 +572,6 @@ function ForexHours({
           (slot) => liveMinutes >= toMinutes(slot.start) && liveMinutes < toMinutes(slot.end),
         )
       : -1;
-  const currentWindow = activeWindowIndex >= 0 ? schedule.windows[activeWindowIndex] : undefined;
 
   const handleRailMove = (event: React.MouseEvent<HTMLDivElement>) => {
     const rect = event.currentTarget.getBoundingClientRect();
@@ -584,12 +586,14 @@ function ForexHours({
         )
       : undefined;
   const hoverScore =
-    hoverMinutes !== null ? (schedule.profile[Math.floor(hoverMinutes / 30)] ?? null) : null;
+    hoverMinutes !== null
+      ? (schedule.profile[Math.min(47, Math.max(0, Math.floor(hoverMinutes / 30)))] ?? null)
+      : null;
   const hoverShift =
     hoverPercent !== null
-      ? hoverPercent < 10
+      ? hoverPercent < 15
         ? "translate-x-0"
-        : hoverPercent > 90
+        : hoverPercent > 85
           ? "-translate-x-full"
           : "-translate-x-1/2"
       : "";
@@ -601,54 +605,77 @@ function ForexHours({
         aria-label="Forex market guidance"
       >
         <div className="bg-panel p-5">
-          <p className="terminal-label">Now · Forex market</p>
+          <div className="flex items-center justify-between">
+            <p className="terminal-label">Now · Forex market</p>
+            <span
+              className={`text-xs font-semibold uppercase tracking-wider ${
+                marketOpen ? "text-status-prime" : "text-muted-foreground"
+              }`}
+            >
+              {marketOpen ? "● Open" : "○ Closed"}
+            </span>
+          </div>
           <div className="mt-2.5 flex items-center gap-2.5">
             <span
-              className={`size-3 rounded-full ${bg(currentWindow?.status ?? (marketOpen ? "PRIME" : "CLOSED"))}`}
+              className={`size-3 rounded-full ${bg(live?.current?.status ?? (marketOpen ? "SWING ENTRY" : "CLOSED"))}`}
             />
             <p
-              className={`text-2xl font-bold ${fg(currentWindow?.status ?? (marketOpen ? "PRIME" : "CLOSED"))}`}
+              className={`text-2xl font-bold ${fg(live?.current?.status ?? (marketOpen ? "SWING ENTRY" : "CLOSED"))}`}
             >
-              {now ? (marketOpen ? (currentWindow?.status ?? "OPEN") : "CLOSED") : "—"}
+              {now ? (live?.current?.status ?? (marketOpen ? "OPEN" : "CLOSED")) : "—"}
             </p>
           </div>
-          <p className="mt-3 text-base text-muted-foreground">
-            {now && currentWindow
-              ? `${currentWindow.label} · until ${currentWindow.end}`
-              : marketOpen
-                ? "Sun 17:00 — Fri 17:00 ET"
-                : "Weekend market closure"}
+          <p className="mt-3 text-base tabular-nums text-muted-foreground">
+            {now && live?.current
+              ? `until ${clock(live.current.to % 1440)} · ${formatCountdown(live.endsIn)}`
+              : "Sun 17:00 — Fri 17:00 ET"}
           </p>
         </div>
+
         <div className="bg-panel p-5">
-          <p className="terminal-label">Active sessions open</p>
-          <p className="mt-2.5 text-2xl font-bold">
-            {now
-              ? active.length
-                ? active.map((session) => session.name).join(" + ")
-                : "None"
-              : "—"}
-          </p>
-          <p className="mt-3 text-base text-muted-foreground">
-            {marketOpen
-              ? "City sessions use local business hours"
-              : "Market resumes Monday 02:30 IST"}
-          </p>
-        </div>
-        <div className="bg-panel p-5">
-          <p className="terminal-label">Highest-volume overlap</p>
-          <div className="mt-2.5 flex items-baseline justify-between gap-3">
-            <p className="text-2xl font-bold">London + New York</p>
-            {hasOverlap && isLiveDay && (
-              <span className="text-xs font-bold uppercase tracking-wider text-status-prime">
-                Peak volume
+          <div className="flex items-center justify-between">
+            <p className="terminal-label">Next session change</p>
+            {active.length > 0 && (
+              <span className="text-[11px] font-medium text-muted-foreground truncate max-w-[150px]">
+                {active.map((s) => s.name).join(" + ")}
               </span>
             )}
           </div>
+          <div className="mt-2.5 flex items-baseline justify-between gap-3">
+            <p className={`text-2xl font-bold ${live?.next ? fg(live.next.window.status) : ""}`}>
+              {now && live?.next ? live.next.window.status : "—"}
+            </p>
+            <p className="text-base tabular-nums text-muted-foreground">
+              {now && live?.next ? formatCountdown(live.next.startsIn) : ""}
+            </p>
+          </div>
           <p className="mt-3 text-base tabular-nums text-muted-foreground">
-            {hasOverlap
-              ? `${range(overlap.start, overlap.end)} IST${isLiveDay ? " today" : ""}`
-              : "Shown on the next weekday"}
+            {now && live?.next
+              ? `${formatWhenLabel(live.next.window, ist?.day)} — ${clock(live.next.window.to % 1440)}`
+              : "—"}
+          </p>
+        </div>
+
+        <div className="bg-panel p-5">
+          <p className="terminal-label">Highest-volume overlap · London + NY</p>
+          <div className="mt-2.5 flex items-baseline justify-between gap-3">
+            <p className="text-2xl font-bold tabular-nums">
+              {now && live?.nextPrime
+                ? formatWhenLabel(live.nextPrime.window, ist?.day)
+                : "London + NY"}
+            </p>
+            <p className="text-base tabular-nums text-muted-foreground">
+              {now && live?.nextPrime ? `in ${formatCountdown(live.nextPrime.startsIn)}` : ""}
+            </p>
+          </div>
+          <p
+            className={`mt-3 text-base font-semibold ${
+              live?.nextPrime ? fg(live.nextPrime.window.status) : "text-muted-foreground"
+            }`}
+          >
+            {now && live?.nextPrime
+              ? `${live.nextPrime.window.status} · until ${clock(live.nextPrime.window.to % 1440)}`
+              : "17:30 — 21:30 IST"}
           </p>
         </div>
       </section>
@@ -673,257 +700,324 @@ function ForexHours({
           )}
         </div>
 
-        <div
-          className="relative mt-8"
-          onMouseMove={handleRailMove}
-          onMouseLeave={() => setHoverPercent(null)}
-        >
-          {hoverPercent !== null && hoverWindow && (
-            <div
-              className="pointer-events-none absolute -top-7 z-30"
-              style={{ left: `${hoverPercent}%` }}
-            >
-              <span
-                className={`absolute flex items-center gap-2 whitespace-nowrap border border-border bg-panel px-2.5 py-1.5 text-xs font-bold uppercase ${hoverShift}`}
-              >
-                <span className={`size-2 rounded-full ${bg(hoverWindow.status)}`} />
-                <span className={fg(hoverWindow.status)}>{hoverWindow.status}</span>
-                <span className="text-foreground">· {hoverWindow.label}</span>
-                {hoverScore !== null && (
-                  <span className="text-muted-foreground">· {hoverScore.toFixed(2)}×</span>
-                )}
-              </span>
-            </div>
-          )}
-
-          {/* Volatility / Liquidity Profile Bars */}
-          <div className="relative flex h-14 items-end gap-px" aria-hidden="true">
-            <div
-              className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-foreground/40"
-              style={{ bottom: profileHeight(1) }}
-            />
-            {schedule.profile.map((value, index) => {
-              const status = schedule.profileStatuses[index] ?? "CLOSED";
-              return (
-                <div
-                  key={index}
-                  className={`flex-1 ${bg(status)} opacity-60`}
-                  style={{
-                    height: value === null ? 0 : profileHeight(value),
-                  }}
-                />
-              );
-            })}
-          </div>
-
-          {/* 24-Hour Composite Status Rail */}
-          <div className="relative mt-1 h-11 cursor-crosshair overflow-hidden border border-border bg-background">
-            {schedule.windows.map((slot, index) => (
-              <div
-                key={`${slot.start}-${slot.end}-${slot.status}`}
-                className={`absolute inset-y-0 border-r border-background/70 ${bg(slot.status)} ${index === activeWindowIndex ? "opacity-100" : "opacity-55"}`}
-                style={{
-                  left: `${toMinutes(slot.start) / 14.4}%`,
-                  width: `${(toMinutes(slot.end) - toMinutes(slot.start)) / 14.4}%`,
-                }}
-                title={`${slot.label} (${slot.start} — ${slot.end})`}
-              />
-            ))}
-            {isLiveDay && now && (
-              <div
-                className="absolute inset-y-0 z-10 w-px bg-live-marker"
-                style={{ left: `${Math.min(100, liveMinutes / 14.4)}%` }}
-              >
-                <span className="absolute -left-1.5 top-1/2 size-3 -translate-y-1/2 rounded-full border-2 border-background bg-live-marker" />
+        <div className="relative mt-8">
+          <div className="grid grid-cols-[80px_1fr] sm:grid-cols-[170px_1fr] gap-x-3 sm:gap-x-4">
+            {/* Left Column: Row Labels and Converted IST Hours */}
+            <div className="flex flex-col select-none">
+              {/* Profile Bar Label */}
+              <div className="h-14 flex flex-col justify-end pb-1 pr-1 text-right sm:text-left">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+                  Liquidity
+                </span>
+                <span className="text-[10px] text-muted-foreground/60 hidden sm:block">
+                  Relative volume
+                </span>
               </div>
-            )}
-          </div>
 
-          {/* Individual City Session Swimlanes */}
-          <div className="mt-2.5 space-y-1.5 cursor-crosshair">
-            {FOREX_SESSIONS.map((session) => {
-              const segments = sessionSegments(session.id);
-              const isLiveActive = isLiveDay && activeIds.has(session.id);
-              const isHoverActive =
-                hoverMinutes !== null &&
-                segments.some((seg) => {
-                  const s = minutesFromIstMidnight(seg.start);
-                  const e = minutesFromIstMidnight(seg.end);
-                  return hoverMinutes >= s && hoverMinutes < e;
-                });
-              return (
-                <div
-                  key={session.id}
-                  className="relative h-7 overflow-hidden border border-border/70 bg-background"
-                >
-                  <div className="pointer-events-none absolute inset-y-0 left-2.5 z-10 flex items-center gap-2">
-                    <span className={`size-2 rounded-full ${session.color}`} />
-                    <span className="text-xs font-bold uppercase tracking-wide text-foreground/90">
-                      {session.name}
-                    </span>
-                    <span className="hidden text-[11px] font-medium text-muted-foreground sm:inline">
-                      · {session.localHours}
-                    </span>
-                  </div>
-                  {segments.map((segment) => {
-                    const start = minutesFromIstMidnight(segment.start);
-                    const end = minutesFromIstMidnight(segment.end);
-                    return (
-                      <div
-                        key={`${session.id}-${segment.start.toISOString()}`}
-                        className={`absolute inset-y-0 ${session.color} transition-opacity ${
-                          isHoverActive
-                            ? "opacity-100 ring-1 ring-inset ring-foreground/40"
-                            : isLiveActive
-                              ? "opacity-90"
-                              : "opacity-45"
-                        }`}
-                        style={{
-                          left: `${start / 14.4}%`,
-                          width: `${(end - start) / 14.4}%`,
-                        }}
-                        title={`${session.name}: ${range(segment.start, segment.end)} IST`}
-                      />
-                    );
-                  })}
-                  {isLiveDay && now && (
+              {/* Market Rail Label */}
+              <div className="mt-2 h-9 flex flex-col justify-center pr-1 text-right sm:text-left">
+                <span className="text-xs font-bold uppercase tracking-wider text-foreground">
+                  Market Rail
+                </span>
+                <span className="text-[10px] text-muted-foreground hidden sm:block">
+                  Composite regime
+                </span>
+              </div>
+
+              {/* Session Group Header */}
+              <div className="mt-3 pt-2 border-t border-border/30 pr-1 text-right sm:text-left">
+                <span className="text-[10px] font-bold uppercase tracking-widest text-muted-foreground/70">
+                  Sessions (IST)
+                </span>
+              </div>
+
+              {/* 4 City Session Labels */}
+              <div className="mt-1.5 space-y-1.5">
+                {FOREX_SESSIONS.map((session) => {
+                  const segments = sessionSegments(session.id);
+                  const isLiveActive = isLiveDay && activeIds.has(session.id);
+                  const istHoursText = segments.length
+                    ? segments.map((seg) => range(seg.start, seg.end)).join(", ")
+                    : "Closed";
+
+                  return (
                     <div
-                      className="pointer-events-none absolute inset-y-0 z-10 w-px bg-live-marker/70"
-                      style={{ left: `${Math.min(100, liveMinutes / 14.4)}%` }}
-                    />
-                  )}
-                </div>
-              );
-            })}
-          </div>
+                      key={session.id}
+                      className="h-6 flex items-center justify-end sm:justify-between pr-1 text-right sm:text-left"
+                    >
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <span
+                          className={`size-1.5 shrink-0 rounded-full ${
+                            isLiveActive ? "bg-emerald-400 animate-pulse" : "bg-muted-foreground/30"
+                          }`}
+                        />
+                        <span
+                          className={`text-xs font-semibold tracking-wide truncate ${
+                            isLiveActive ? "text-foreground font-bold" : "text-muted-foreground"
+                          }`}
+                        >
+                          {session.name}
+                        </span>
+                      </div>
+                      <span className="text-[10px] tabular-nums text-muted-foreground/70 hidden sm:inline ml-1 shrink-0">
+                        {istHoursText}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
 
-          {/* Full vertical crosshair tracking cursor across profile, composite rail, and session swimlanes */}
-          {hoverPercent !== null && (
+              {/* Time Axis IST Label */}
+              <div className="mt-2 h-5 flex items-center pr-1 text-right sm:text-left">
+                <span className="text-[10px] font-semibold text-muted-foreground/60">IST</span>
+              </div>
+            </div>
+
+            {/* Right Column: Timeline Tracks with Interactive Hover */}
             <div
-              className="pointer-events-none absolute inset-y-0 z-20 w-px border-l border-dashed border-foreground/60"
-              style={{ left: `${hoverPercent}%` }}
-            />
-          )}
-        </div>
-
-        {/* 24-hour time axis with interactive hover pill */}
-        <div className="relative mt-2 h-5">
-          <div className="flex justify-between text-xs font-medium text-muted-foreground">
-            <span>00:00</span>
-            <span>06:00</span>
-            <span>12:00</span>
-            <span>18:00</span>
-            <span>24:00</span>
-          </div>
-          {hoverMinutes !== null && (
-            <span
-              className={`pointer-events-none absolute top-0 whitespace-nowrap bg-foreground px-1.5 py-0.5 text-xs font-bold tabular-nums text-background ${hoverShift}`}
-              style={{ left: `${hoverPercent}%` }}
+              className="relative cursor-crosshair select-none"
+              onMouseMove={handleRailMove}
+              onMouseLeave={() => setHoverPercent(null)}
             >
-              {clock(hoverMinutes)}
-            </span>
-          )}
+              {/* Floating Hover Window Pill */}
+              {hoverPercent !== null && hoverWindow && (
+                <div
+                  className="pointer-events-none absolute -top-8 z-30"
+                  style={{ left: `${hoverPercent}%` }}
+                >
+                  <span
+                    className={`absolute flex items-center gap-2 whitespace-nowrap border border-border bg-panel px-2.5 py-1.5 text-xs font-bold uppercase shadow-lg ${hoverShift}`}
+                  >
+                    <span className={`size-2 rounded-full ${bg(hoverWindow.status)}`} />
+                    <span className={fg(hoverWindow.status)}>{hoverWindow.status}</span>
+                    <span className="text-foreground">· {hoverWindow.label}</span>
+                    {hoverScore !== null && (
+                      <span className="text-muted-foreground">· {hoverScore.toFixed(2)}×</span>
+                    )}
+                  </span>
+                </div>
+              )}
+
+              {/* Full-Height Vertical Hover Crosshair Line */}
+              {hoverPercent !== null && (
+                <div
+                  className="pointer-events-none absolute inset-y-0 z-20 w-px border-l border-dashed border-foreground/60"
+                  style={{ left: `${hoverPercent}%` }}
+                />
+              )}
+
+              {/* Volatility Profile Bars (h-14) */}
+              <div className="relative flex h-14 items-end gap-px" aria-hidden="true">
+                <div
+                  className="pointer-events-none absolute inset-x-0 z-10 border-t border-dashed border-foreground/40"
+                  style={{ bottom: profileHeight(1) }}
+                />
+                {schedule.profile.map((value, index) => {
+                  const status = schedule.profileStatuses[index] ?? "CLOSED";
+                  return (
+                    <div
+                      key={index}
+                      className={`flex-1 ${bg(status)} opacity-60`}
+                      style={{
+                        height: value === null ? 0 : profileHeight(value),
+                      }}
+                    />
+                  );
+                })}
+              </div>
+
+              {/* 24-Hour Composite Rail (h-9) */}
+              <div className="relative mt-2 h-9 overflow-hidden border border-border bg-background">
+                {schedule.windows.map((slot, index) => (
+                  <div
+                    key={`${slot.start}-${slot.end}-${slot.status}`}
+                    className={`absolute inset-y-0 border-r border-background/70 ${bg(slot.status)} ${
+                      index === activeWindowIndex ? "opacity-100" : "opacity-55"
+                    }`}
+                    style={{
+                      left: `${toMinutes(slot.start) / 14.4}%`,
+                      width: `${(toMinutes(slot.end) - toMinutes(slot.start)) / 14.4}%`,
+                    }}
+                    title={`${slot.label} (${slot.start} — ${slot.end})`}
+                  />
+                ))}
+                {isLiveDay && now && (
+                  <div
+                    className="absolute inset-y-0 z-10 w-px bg-live-marker"
+                    style={{ left: `${Math.min(100, liveMinutes / 14.4)}%` }}
+                  >
+                    <span className="absolute -left-1.5 top-1/2 size-3 -translate-y-1/2 rounded-full border-2 border-background bg-live-marker" />
+                  </div>
+                )}
+              </div>
+
+              {/* Session Divider Alignment Line */}
+              <div className="mt-3 pt-2 border-t border-border/30" />
+
+              {/* 4 City Session Tracks (h-6 each) */}
+              <div className="mt-1.5 space-y-1.5">
+                {FOREX_SESSIONS.map((session) => {
+                  const segments = sessionSegments(session.id);
+                  const isLiveActive = isLiveDay && activeIds.has(session.id);
+                  const isHoverActive =
+                    hoverMinutes !== null &&
+                    segments.some((seg) => {
+                      const s = minutesFromIstMidnight(seg.start);
+                      const e = minutesFromIstMidnight(seg.end);
+                      return hoverMinutes >= s && hoverMinutes < e;
+                    });
+
+                  return (
+                    <div
+                      key={session.id}
+                      className="relative h-6 overflow-hidden border border-border/40 bg-background/50 rounded-xs"
+                    >
+                      {segments.map((segment) => {
+                        const start = minutesFromIstMidnight(segment.start);
+                        const end = minutesFromIstMidnight(segment.end);
+                        return (
+                          <div
+                            key={`${session.id}-${segment.start.toISOString()}`}
+                            className={`absolute inset-y-0 border-x border-foreground/20 transition-all ${
+                              isHoverActive
+                                ? "bg-foreground/35 ring-1 ring-foreground/50 z-10"
+                                : isLiveActive
+                                  ? "bg-foreground/20 border-foreground/40"
+                                  : "bg-foreground/10 hover:bg-foreground/20"
+                            }`}
+                            style={{
+                              left: `${start / 14.4}%`,
+                              width: `${(end - start) / 14.4}%`,
+                            }}
+                            title={`${session.name} (${session.code}): ${range(segment.start, segment.end)} IST · Local ${session.localHours}`}
+                          />
+                        );
+                      })}
+                      {isLiveDay && now && (
+                        <div
+                          className="pointer-events-none absolute inset-y-0 z-10 w-px bg-live-marker/70"
+                          style={{ left: `${Math.min(100, liveMinutes / 14.4)}%` }}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Time Axis (h-5) */}
+              <div className="relative mt-2 h-5">
+                <div className="flex justify-between text-xs font-medium text-muted-foreground">
+                  <span>00:00</span>
+                  <span>06:00</span>
+                  <span>12:00</span>
+                  <span>18:00</span>
+                  <span>24:00</span>
+                </div>
+                {hoverMinutes !== null && (
+                  <span
+                    className={`pointer-events-none absolute top-0 whitespace-nowrap bg-foreground px-1.5 py-0.5 text-xs font-bold tabular-nums text-background ${hoverShift}`}
+                    style={{ left: `${hoverPercent}%` }}
+                  >
+                    {clock(hoverMinutes)}
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
         </div>
 
-        {/* Status and Session Legend */}
+        {/* Status Legend */}
         <div className="mt-5 flex flex-wrap items-center justify-between gap-y-2 border-t border-border/50 pt-4">
           <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
             {(Object.keys(statusClass) as Status[]).map((status) => (
               <div key={status} className="flex items-center gap-2">
                 <span className={`size-2.5 rounded-full ${bg(status)}`} />
-                <span className="text-xs font-semibold text-muted-foreground">{status}</span>
+                <span className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  {status}
+                </span>
               </div>
             ))}
           </div>
-          <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs font-medium text-muted-foreground">
-            {FOREX_SESSIONS.map((session) => (
-              <div key={session.id} className="flex items-center gap-1.5">
-                <span className={`size-2 rounded-full ${session.color}`} />
-                <span>{session.name}</span>
-              </div>
-            ))}
+          <div className="flex items-center gap-2 text-xs text-muted-foreground">
+            <span className="inline-block h-2.5 w-5 rounded-xs border border-foreground/30 bg-foreground/15" />
+            <span>Session track (operating hours converted to IST)</span>
           </div>
         </div>
       </section>
 
-      {/* Interactive Session Windows & Hubs Table */}
-      <section className="mt-4 overflow-hidden border border-border bg-panel">
-        <div className="flex items-center justify-between border-b border-border bg-panel px-4 py-2.5">
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setViewMode("windows")}
-              className={`px-3 py-1 text-xs font-bold uppercase transition-colors ${
-                viewMode === "windows"
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              Market windows ({schedule.windows.length})
-            </button>
-            <button
-              type="button"
-              onClick={() => setViewMode("sessions")}
-              className={`px-3 py-1 text-xs font-bold uppercase transition-colors ${
-                viewMode === "sessions"
-                  ? "bg-foreground text-background"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
-            >
-              City sessions (4)
-            </button>
-          </div>
-          <span className="text-xs text-muted-foreground">
-            {viewMode === "windows" ? "IST trading windows" : "Major financial hubs"}
-          </span>
+      <section className="mt-4 border border-border bg-panel" aria-label="Forex timetable details">
+        <div className="flex border-b border-border">
+          <button
+            type="button"
+            onClick={() => setViewMode("windows")}
+            className={`min-h-11 px-4 text-xs font-bold uppercase tracking-wider transition-colors ${
+              viewMode === "windows"
+                ? "bg-secondary text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            Market Windows ({schedule.windows.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setViewMode("sessions")}
+            className={`min-h-11 px-4 text-xs font-bold uppercase tracking-wider transition-colors ${
+              viewMode === "sessions"
+                ? "bg-secondary text-foreground"
+                : "text-muted-foreground hover:text-foreground"
+            }`}
+          >
+            City Sessions ({FOREX_SESSIONS.length})
+          </button>
         </div>
 
         {viewMode === "windows" ? (
           <>
-            <div className="grid grid-cols-[auto_1fr_auto] gap-3 border-b border-border px-4 py-3 text-xs font-bold uppercase tracking-wide text-muted-foreground sm:grid-cols-[170px_1fr_80px_160px_80px]">
+            <div className="grid grid-cols-[100px_1fr_auto] items-center gap-3 border-b border-border px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground sm:grid-cols-[140px_130px_1fr_80px]">
               <span>Window</span>
               <span>Status</span>
-              <span className="hidden text-right sm:block">Score</span>
-              <span className="hidden text-left sm:block">Description</span>
+              <span className="hidden sm:block">Description</span>
               <span className="text-right">Length</span>
             </div>
-            {schedule.windows.map((slot, index) => (
-              <div
-                key={`${slot.start}-${slot.end}`}
-                className={`grid min-h-16 grid-cols-[auto_1fr_auto] items-center gap-3 border-b border-border/70 px-4 py-3.5 last:border-b-0 sm:grid-cols-[170px_1fr_80px_160px_80px] ${
-                  index === activeWindowIndex ? "bg-active-row" : ""
-                }`}
-              >
-                <span className="whitespace-nowrap text-sm tabular-nums sm:text-base">
-                  {slot.start} — {slot.end}
-                </span>
-                <span className="flex items-center gap-2.5 whitespace-nowrap text-sm font-bold sm:text-base">
-                  <span className={`size-2.5 shrink-0 rounded-full ${bg(slot.status)}`} />
-                  <span className={index === activeWindowIndex ? fg(slot.status) : ""}>
-                    {slot.status}
+            {schedule.windows.map((slot, index) => {
+              const isActive = index === activeWindowIndex;
+              return (
+                <div
+                  key={`${slot.start}-${slot.end}-${slot.status}`}
+                  className={`grid min-h-14 grid-cols-[100px_1fr_auto] items-center gap-3 border-b border-border/70 px-4 py-3 last:border-b-0 sm:grid-cols-[140px_130px_1fr_80px] ${
+                    isActive ? "bg-active-row" : ""
+                  }`}
+                >
+                  <span className="text-sm font-semibold tabular-nums sm:text-base">
+                    {slot.start} — {slot.end}
                   </span>
-                  {index === activeWindowIndex && (
-                    <span className="hidden border border-current px-1.5 py-0.5 text-xs font-bold uppercase sm:inline">
-                      Live
+                  <span className="flex items-center gap-2">
+                    <span className={`size-2.5 shrink-0 rounded-full ${bg(slot.status)}`} />
+                    <span className={`text-xs font-bold uppercase sm:text-sm ${fg(slot.status)}`}>
+                      {slot.status}
                     </span>
-                  )}
-                </span>
-                <span className="hidden text-right text-sm tabular-nums sm:block sm:text-base">
-                  {slot.score === null ? "—" : `${slot.score.toFixed(2)}×`}
-                </span>
-                <span className="hidden text-sm text-muted-foreground sm:block">{slot.label}</span>
-                <span className="text-right text-sm text-muted-foreground sm:text-base">
-                  {durationLabel(slot.start, slot.end)}
-                </span>
-              </div>
-            ))}
+                  </span>
+                  <span className="hidden text-sm text-muted-foreground sm:block">
+                    {slot.score !== null ? (
+                      <span className="font-semibold text-foreground mr-1.5">
+                        {slot.score.toFixed(2)}×
+                      </span>
+                    ) : null}
+                    {slot.label}
+                  </span>
+                  <span className="text-right text-sm tabular-nums text-muted-foreground">
+                    {durationLabel(slot.start, slot.end)}
+                  </span>
+                </div>
+              );
+            })}
           </>
         ) : (
           <>
-            <div className="grid grid-cols-[1fr_auto_auto] gap-3 border-b border-border px-4 py-3 text-xs font-bold uppercase tracking-wide text-muted-foreground sm:grid-cols-[160px_1fr_150px_90px]">
-              <span>Session</span>
-              <span>IST hours</span>
-              <span className="hidden sm:block">Local hours</span>
+            <div className="grid grid-cols-[1fr_auto_auto] items-center gap-3 border-b border-border px-4 py-3 text-xs font-bold uppercase tracking-wider text-muted-foreground sm:grid-cols-[160px_1fr_150px_90px]">
+              <span>City Session</span>
+              <span className="text-right sm:text-left">IST Hours</span>
+              <span className="hidden sm:block">Local Hours</span>
               <span className="text-right">Status</span>
             </div>
             {FOREX_SESSIONS.map((session) => {
@@ -937,8 +1031,15 @@ function ForexHours({
                   }`}
                 >
                   <span className="flex items-center gap-2 text-sm font-bold sm:text-base">
-                    <span className={`size-2.5 shrink-0 rounded-full ${session.color}`} />
+                    <span
+                      className={`size-2 shrink-0 rounded-full ${
+                        isActive ? "bg-emerald-400" : "bg-muted-foreground/30"
+                      }`}
+                    />
                     <span>{session.name}</span>
+                    <span className="text-xs text-muted-foreground font-normal">
+                      ({session.code})
+                    </span>
                     {isActive && (
                       <span className="hidden border border-status-prime px-1.5 py-0.5 text-xs font-bold uppercase text-status-prime sm:inline">
                         Live
@@ -951,10 +1052,12 @@ function ForexHours({
                       : "Market closed"}
                   </span>
                   <span className="hidden text-sm text-muted-foreground sm:block">
-                    {session.localHours}
+                    {session.localHours} local
                   </span>
                   <span
-                    className={`text-right text-sm font-bold ${isActive ? "text-status-prime" : "text-muted-foreground"}`}
+                    className={`text-right text-sm font-bold ${
+                      isActive ? "text-status-prime" : "text-muted-foreground"
+                    }`}
                   >
                     {isActive ? "OPEN" : "CLOSED"}
                   </span>
